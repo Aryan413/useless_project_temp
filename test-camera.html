@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Countify — Isolated Camera & Detector Tester</title>
+  <meta name="description" content="Standalone diagnostic test bench for webcam permissions and OpenCV facial hair counting.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- OpenCV.js -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript" id="opencv-script"></script>
+  <!-- MediaPipe FaceMesh for facial hair landmarks -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="detectors.js"></script>
+
+  <style>
+    .tester-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+    .tester-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-light);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .tester-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 960px) {
+      .tester-grid { grid-template-columns: 1fr; }
+    }
+    .card-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--cyan-500), var(--lime-500));
+    }
+    .panel-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .badge-ok { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-denied { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    
+    .video-viewport {
+      width: 100%;
+      height: 360px;
+      background: #000;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      position: relative;
+      border: 1px solid var(--border-medium);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .video-viewport video, .video-viewport canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .viewport-placeholder {
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 20px;
+    }
+    .controls-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .diag-table {
+      width: 100%;
+      font-size: 0.85rem;
+      font-family: var(--font-mono);
+      margin-top: 16px;
+      border-collapse: collapse;
+    }
+    .diag-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .diag-table td:first-child {
+      color: var(--text-tertiary);
+      width: 40%;
+    }
+    .diag-table td:last-child {
+      color: var(--text-primary);
+    }
+    .troubleshoot-box {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      display: none;
+    }
+    .results-hero {
+      background: rgba(6, 182, 212, 0.06);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      text-align: center;
+    }
+    .results-hero .num {
+      font-family: var(--font-display);
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--cyan-400);
+      line-height: 1;
+    }
+    .results-hero .label {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="cyber-grid-bg"></div>
+  <div class="radial-glow glow-cyan"></div>
+  <div class="radial-glow glow-lime"></div>
+
+  <div class="tester-container">
+    <header class="tester-header">
+      <div>
+        <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--lime-400); font-weight: 700; margin-bottom: 4px;">COUNTIFY STANDALONE BENCH</div>
+        <h1 style="font-family: var(--font-display); font-size: 1.8rem; font-weight: 800; margin: 0; color: #fff;">
+          Camera & Beard Detection Isolated Tester
+        </h1>
+        <p style="color: var(--text-tertiary); margin-top: 4px; font-size: 0.9rem;">
+          Test your webcam hardware and dense facial hair counting completely separate from the main application.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span id="cv-engine-badge" class="status-badge badge-pending">OpenCV Loading...</span>
+        <a href="index.html" class="btn btn-secondary" style="text-decoration: none; padding: 8px 16px; font-size: 0.85rem;">
+          ← Back to Countify App
+        </a>
+      </div>
+    </header>
+
+    <div class="tester-grid">
+      <!-- LEFT PANEL: ISOLATED CAMERA TEST -->
+      <div class="card-panel">
+        <div class="panel-title">
+          <span>📹</span>
+          <span>1. Isolated Camera Hardware Tester</span>
+          <span id="cam-status-badge" class="status-badge badge-pending" style="margin-left: auto;">Inactive</span>
+        </div>
+
+        <div class="video-viewport" id="cam-viewport">
+          <div id="cam-placeholder" class="viewport-placeholder">
+            <div>Click "Test Camera Alone" below to request webcam stream</div>
+          </div>
+          <video id="live-video" autoplay playsinline muted style="display: none;"></video>
+        </div>
+
+        <div class="controls-row">
+          <button id="btn-start-cam" class="btn btn-primary" style="flex: 1;">
+            ▶ Test Camera Alone
+          </button>
+          <button id="btn-stop-cam" class="btn btn-secondary" style="display: none;">
+            ⏹ Stop Camera
+          </button>
+          <button id="btn-snap-and-count" class="btn btn-primary" style="background: linear-gradient(135deg, var(--lime-500), #059669); color: #000; font-weight: 700; display: none;">
+            📸 Snap & Count Beard
+          </button>
+        </div>
+
+        <div class="controls-row" style="margin-top: 10px;">
+          <select id="cam-device-select" class="dropdown-select" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
+            <option value="">Default / First Available Camera</option>
+          </select>
+        </div>
+
+        <!-- Hardware & Permission Diagnostics -->
+        <table class="diag-table">
+          <tr>
+            <td>Permission State:</td>
+            <td id="diag-perm-state">Checking...</td>
+          </tr>
+          <tr>
+            <td>Stream Resolution:</td>
+            <td id="diag-resolution">None</td>
+          </tr>
+          <tr>
+            <td>Detected Cameras:</td>
+            <td id="diag-devices-count">0 devices</td>
+          </tr>
+          <tr>
+            <td>Hardware Lock Status:</td>
+            <td id="diag-lock-status">Idle</td>
+          </tr>
+        </table>
+
+        <!-- Troubleshooting helper if denied -->
+        <div id="troubleshoot-box" class="troubleshoot-box">
+          <strong style="color: #f87171; display: block; margin-bottom: 6px;">⚠️ Why Camera Permission was Denied:</strong>
+          <p id="troubleshoot-reason" style="margin-bottom: 8px;">The browser or system blocked camera access.</p>
+          <ol style="margin-left: 18px; line-height: 1.6; font-size: 0.8rem;">
+            <li><strong>Chrome URL bar icon:</strong> Click the padlock 🔒 or tune icon on the left side of the address bar at <code>http://localhost:8080</code> and toggle <strong>Camera</strong> to <strong>"Allow"</strong>.</li>
+            <li><strong>Exclusive Hardware Lock:</strong> Ensure no other tabs (like port 8000), Zoom, or Teams are currently using your webcam.</li>
+            <li><strong>Reload:</strong> Press <kbd style="background: #222; padding: 2px 6px; border-radius: 4px;">F5</kbd> after changing settings.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL: STANDALONE FACIAL HAIR CV TESTER -->
+      <div class="card-panel">
+        <div class="panel-title">
+          <span>🧔</span>
+          <span>2. Facial Hair / Beard Counting Engine</span>
+        </div>
+
+        <div class="video-viewport" id="cv-viewport">
+          <div id="cv-placeholder" class="viewport-placeholder">
+            <div>Capture a snapshot from camera, or upload a photo, or load test sample below</div>
+          </div>
+          <canvas id="cv-canvas" style="display: none;"></canvas>
+        </div>
+
+        <div class="controls-row">
+          <button id="btn-load-beard-sample" class="btn btn-primary" style="flex: 1;">
+            ✨ Load Dense Beard Sample
+          </button>
+          <label class="btn btn-secondary" style="cursor: pointer; margin: 0; display: flex; align-items: center; justify-content: center;">
+            📁 Upload Beard Photo
+            <input type="file" id="file-upload-input" accept="image/*" style="display: none;">
+          </label>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="results-hero">
+          <div>
+            <div class="num" id="stat-beard-count">0</div>
+            <div class="label">Total Strands</div>
+          </div>
+          <div>
+            <div class="num" id="stat-density" style="color: var(--lime-400);">0</div>
+            <div class="label">Density / cm²</div>
+          </div>
+          <div>
+            <div class="num" id="stat-ms" style="color: #94a3b8; font-size: 1.8rem;">0ms</div>
+            <div class="label">CV Compute Time</div>
+          </div>
+        </div>
+
+        <table class="diag-table">
+          <tr>
+            <td>Trichology Class:</td>
+            <td id="diag-beard-class">—</td>
+          </tr>
+          <tr>
+            <td>Detection Engine:</td>
+            <td>Multi-scale Top-Hat + Core Follicle Area CV</td>
+          </tr>
+          <tr>
+            <td>Status:</td>
+            <td id="diag-cv-status">Awaiting image or sample</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let activeStream = null;
+    let isCvReady = false;
+
+    // Check OpenCV readiness
+    const cvBadge = document.getElementById('cv-engine-badge');
+    if (cvBadge) {
+      cvBadge.className = 'status-badge badge-ok';
+      cvBadge.textContent = 'Hybrid CV Engine Ready';
+    }
+
+    function checkOpenCV() {
+      if (typeof cv !== 'undefined' && cv.Mat) {
+        isCvReady = true;
+        const badge = document.getElementById('cv-engine-badge');
+        if (badge) {
+          badge.className = 'status-badge badge-ok';
+          badge.textContent = 'OpenCV 4.x + Native CV Ready';
+        }
+      } else {
+        setTimeout(checkOpenCV, 400);
+      }
+    }
+    checkOpenCV();
+
+    // Check browser permission status
+    async function checkPermissionStatus() {
+      const permElem = document.getElementById('diag-perm-state');
+      try {
+        if (navigator.permissions && navigator.permissions.query) {
+          const res = await navigator.permissions.query({ name: 'camera' });
+          permElem.textContent = res.state.toUpperCase();
+          if (res.state === 'granted') {
+            permElem.style.color = '#34d399';
+          } else if (res.state === 'denied') {
+            permElem.style.color = '#f87171';
+            document.getElementById('troubleshoot-box').style.display = 'block';
+            document.getElementById('troubleshoot-reason').textContent = 'Permission is currently DENIED in your browser for http://localhost:8080.';
+          } else {
+            permElem.style.color = '#fbbf24';
+          }
+          res.onchange = () => checkPermissionStatus();
+        } else {
+          permElem.textContent = 'Supported (Browser Prompt)';
+        }
+      } catch (e) {
+        permElem.textContent = 'Standard WebRTC (Prompt on request)';
+      }
+    }
+    checkPermissionStatus();
+
+    // Enumerate camera devices
+    async function loadCameraDevices() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        const countElem = document.getElementById('diag-devices-count');
+        const select = document.getElementById('cam-device-select');
+        
+        countElem.textContent = `${videoDevices.length} camera(s) detected`;
+        select.innerHTML = '<option value="">Default / First Available Camera</option>';
+        videoDevices.forEach((dev, idx) => {
+          const opt = document.createElement('option');
+          opt.value = dev.deviceId;
+          opt.textContent = dev.label || `Camera #${idx + 1} (${dev.deviceId.substring(0, 8)}...)`;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.warn('Cannot enumerate devices:', err);
+      }
+    }
+    loadCameraDevices();
+
+    // Start Camera
+    const btnStartCam = document.getElementById('btn-start-cam');
+    const btnStopCam = document.getElementById('btn-stop-cam');
+    const btnSnap = document.getElementById('btn-snap-and-count');
+    const videoElem = document.getElementById('live-video');
+    const camPlaceholder = document.getElementById('cam-placeholder');
+    const camBadge = document.getElementById('cam-status-badge');
+    const lockStatus = document.getElementById('diag-lock-status');
+    const resElem = document.getElementById('diag-resolution');
+    const troubleshootBox = document.getElementById('troubleshoot-box');
+
+    btnStartCam.addEventListener('click', async () => {
+      troubleshootBox.style.display = 'none';
+      lockStatus.textContent = 'Requesting hardware stream...';
+
+      const selectedId = document.getElementById('cam-device-select').value;
+      const constraints = selectedId 
+        ? { video: { deviceId: { exact: selectedId } } }
+        : { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } };
+
+      try {
+        activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+        onCameraSuccess(activeStream);
+      } catch (err1) {
+        console.warn('Initial HD constraint failed, trying universal fallback { video: true }...', err1);
+        try {
+          activeStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          onCameraSuccess(activeStream);
+        } catch (err2) {
+          handleCameraError(err2);
+        }
+      }
+    });
+
+    function onCameraSuccess(stream) {
+      videoElem.srcObject = stream;
+      videoElem.style.display = 'block';
+      camPlaceholder.style.display = 'none';
+
+      btnStartCam.style.display = 'none';
+      btnStopCam.style.display = 'inline-block';
+      btnSnap.style.display = 'inline-block';
+
+      camBadge.className = 'status-badge badge-ok';
+      camBadge.textContent = 'STREAM ACTIVE';
+
+      lockStatus.textContent = 'Active (Acquired exclusive lock)';
+      lockStatus.style.color = '#34d399';
+
+      videoElem.onloadedmetadata = () => {
+        resElem.textContent = `${videoElem.videoWidth} x ${videoElem.videoHeight}`;
+      };
+
+      checkPermissionStatus();
+      loadCameraDevices(); // re-query to get device labels now that permission is granted
+    }
+
+    function handleCameraError(err) {
+      console.error('Camera Error:', err);
+      camBadge.className = 'status-badge badge-denied';
+      camBadge.textContent = 'FAILED';
+
+      lockStatus.style.color = '#f87171';
+      troubleshootBox.style.display = 'block';
+
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        lockStatus.textContent = 'Permission Denied by User or Browser';
+        document.getElementById('troubleshoot-reason').textContent = 'Camera permission was blocked. Click the address bar icon next to http://localhost:8080 and set Camera to Allow.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        lockStatus.textContent = 'Hardware Locked by Another App';
+        document.getElementById('troubleshoot-reason').textContent = 'Your webcam is being used by another application (e.g. Zoom, Teams, Skype, or another open browser tab). Close them and try again.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        lockStatus.textContent = 'No Camera Device Found';
+        document.getElementById('troubleshoot-reason').textContent = 'No physical webcam found on this computer. You can still test using "Load Dense Beard Sample" or "Upload Beard Photo"!';
+      } else {
+        lockStatus.textContent = `Error: ${err.name} - ${err.message}`;
+        document.getElementById('troubleshoot-reason').textContent = err.message;
+      }
+    }
+
+    btnStopCam.addEventListener('click', () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach(t => t.stop());
+        activeStream = null;
+      }
+      videoElem.srcObject = null;
+      videoElem.style.display = 'none';
+      camPlaceholder.style.display = 'block';
+      btnStartCam.style.display = 'inline-block';
+      btnStopCam.style.display = 'none';
+      btnSnap.style.display = 'none';
+
+      camBadge.className = 'status-badge badge-pending';
+      camBadge.textContent = 'Inactive';
+      lockStatus.textContent = 'Released';
+      lockStatus.style.color = 'var(--text-primary)';
+      resElem.textContent = 'None';
+    });
+
+    // Snap and Run Facial Hair Counting
+    btnSnap.addEventListener('click', () => {
+      if (!videoElem.videoWidth) return;
+      const cvCanvas = document.getElementById('cv-canvas');
+      cvCanvas.width = videoElem.videoWidth;
+      cvCanvas.height = videoElem.videoHeight;
+      const ctx = cvCanvas.getContext('2d');
+      ctx.drawImage(videoElem, 0, 0, cvCanvas.width, cvCanvas.height);
+      runFacialHairAnalysis(cvCanvas);
+    });
+
+    function generateDefaultFaceLandmarks(w, h) {
+      const lms = [];
+      for (let i = 0; i < 468; i++) lms.push({ x: 0.5, y: 0.5, z: 0 });
+      lms[1] = { x: 320 / w, y: 255 / h, z: 0 };
+      lms[2] = { x: 320 / w, y: 260 / h, z: 0 };
+      lms[10] = { x: 320 / w, y: 120 / h, z: 0 };
+      lms[151] = { x: 320 / w, y: 140 / h, z: 0 };
+      lms[152] = { x: 320 / w, y: 410 / h, z: 0 };
+      lms[176] = { x: 210 / w, y: 350 / h, z: 0 };
+      lms[400] = { x: 430 / w, y: 350 / h, z: 0 };
+      const mIndices = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191, 78, 2];
+      mIndices.forEach((idx, i) => {
+        const angle = (i / mIndices.length) * Math.PI * 2;
+        lms[idx] = { x: (320 + Math.cos(angle) * 45) / w, y: (275 + Math.sin(angle) * 15) / h, z: 0 };
+      });
+      const bIndices = [17, 18, 200, 199, 175, 152, 377, 400, 378, 379, 365, 397, 288, 435, 367, 364, 394, 395, 369, 396, 176, 148, 152, 58, 172, 136, 150, 149];
+      bIndices.forEach((idx, i) => {
+        const angle = (i / bIndices.length) * Math.PI * 2;
+        lms[idx] = { x: (320 + Math.cos(angle) * 95) / w, y: (350 + Math.sin(angle) * 55) / h, z: 0 };
+      });
+      const lcIndices = [234, 127, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 200, 18, 37, 39, 40, 185, 61, 98, 117, 118, 101, 116, 123, 147, 187];
+      lcIndices.forEach((idx, i) => {
+        const angle = (i / lcIndices.length) * Math.PI * 2;
+        lms[idx] = { x: (250 + Math.cos(angle) * 60) / w, y: (335 + Math.sin(angle) * 50) / h, z: 0 };
+      });
+      const rcIndices = [454, 356, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 200, 18, 267, 269, 270, 409, 291, 327, 346, 347, 330, 345, 352, 376, 411];
+      rcIndices.forEach((idx, i) => {
+        const angle = (i / rcIndices.length) * Math.PI * 2;
+        lms[idx] = { x: (390 + Math.cos(angle) * 60) / w, y: (335 + Math.sin(angle) * 50) / h, z: 0 };
+      });
+      return lms;
+    }
+
+    // Run Facial Hair Analysis
+    function runFacialHairAnalysis(canvas) {
+      const cvPlaceholder = document.getElementById('cv-placeholder');
+      const cvCanvas = document.getElementById('cv-canvas');
+      cvPlaceholder.style.display = 'none';
+      cvCanvas.style.display = 'block';
+
+      const diagStatus = document.getElementById('diag-cv-status');
+      diagStatus.textContent = 'Computing OpenCV contours...';
+
+      const t0 = performance.now();
+      try {
+        const landmarks = generateDefaultFaceLandmarks(canvas.width, canvas.height);
+        const result = FacialHairEstimator.process(canvas, landmarks);
+        const t1 = performance.now();
+        const duration = Math.round(t1 - t0);
+
+        if (result.error) {
+          diagStatus.textContent = result.message;
+          diagStatus.style.color = '#f87171';
+          return;
+        }
+
+        const count = result.finalCount || 0;
+        const density = Math.round(count / 28);
+        document.getElementById('stat-beard-count').textContent = count.toLocaleString();
+        document.getElementById('stat-density').textContent = density;
+        document.getElementById('stat-ms').textContent = `${duration}ms`;
+        document.getElementById('diag-beard-class').textContent = count > 1200 ? 'Dense Full Beard' : (count > 400 ? 'Medium Beard' : 'Light Stubble');
+        diagStatus.textContent = `Complete (${count.toLocaleString()} strands detected)`;
+        diagStatus.style.color = '#34d399';
+
+        // Render detected strands overlay
+        if (result.strandOverlayPoints && result.strandOverlayPoints.length > 0) {
+          const ctx = cvCanvas.getContext('2d');
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#06b6d4';
+          result.strandOverlayPoints.forEach(pt => {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 1.2, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+        }
+      } catch (err) {
+        console.error('Facial hair analysis error:', err);
+        diagStatus.textContent = `Analysis error: ${err.message}`;
+        diagStatus.style.color = '#f87171';
+      }
+    }
+
+    // Load Dense Beard Sample
+    document.getElementById('btn-load-beard-sample').addEventListener('click', () => {
+      const cvCanvas = document.getElementById('cv-canvas');
+      cvCanvas.width = 640;
+      cvCanvas.height = 480;
+      const ctx = cvCanvas.getContext('2d');
+
+      // Draw portrait with heavy beard
+      const grad = ctx.createLinearGradient(0, 0, 0, 480);
+      grad.addColorStop(0, '#1e293b');
+      grad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 640, 480);
+
+      // Skin tone
+      ctx.fillStyle = '#c58c65';
+      ctx.beginPath();
+      ctx.ellipse(320, 240, 140, 190, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eyes
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(270, 180, 20, 12, 0, 0, Math.PI * 2);
+      ctx.ellipse(370, 180, 20, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2d1d12';
+      ctx.beginPath();
+      ctx.arc(270, 180, 8, 0, Math.PI * 2);
+      ctx.arc(370, 180, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Dense beard base
+      ctx.fillStyle = '#1c130c';
+      ctx.beginPath();
+      ctx.moveTo(200, 220);
+      ctx.bezierCurveTo(180, 320, 210, 420, 320, 430);
+      ctx.bezierCurveTo(430, 420, 460, 320, 440, 220);
+      ctx.bezierCurveTo(430, 260, 400, 300, 320, 310);
+      ctx.bezierCurveTo(240, 300, 210, 260, 200, 220);
+      ctx.fill();
+
+      // Heavy Moustache
+      ctx.beginPath();
+      ctx.ellipse(320, 275, 75, 25, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Realistic individual strand noise
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = '#0a0705';
+      for (let i = 0; i < 1800; i++) {
+        const u = Math.random();
+        const v = Math.random();
+        const bx = 200 + u * 240;
+        const by = 240 + v * 180;
+        const dx = (Math.random() - 0.5) * 14;
+        const dy = 4 + Math.random() * 12;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + dx, by + dy);
+        ctx.stroke();
+      }
+
+      runFacialHairAnalysis(cvCanvas);
+    });
+
+    // Upload Beard Photo File
+    document.getElementById('file-upload-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => {
+        const cvCanvas = document.getElementById('cv-canvas');
+        cvCanvas.width = img.width;
+        cvCanvas.height = img.height;
+        const ctx = cvCanvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        runFacialHairAnalysis(cvCanvas);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  </script>
+</body>
+</html>

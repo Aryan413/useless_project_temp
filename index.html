@@ -1,1 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COUNTIFY — Solving the World’s Least Important Counting Problems</title>
+  <meta name="description" content="An intentionally useless but technically genuine computer-vision web application that counts unnecessary things using OpenCV.js, MediaPipe, and Canvas.">
 
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔢</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- MediaPipe FaceMesh -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+  <!-- OpenCV.js (async loading with readiness listener) -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript" id="opencv-script"></script>
+  <script src="gemini-api.js"></script>
+</head>
+<body>
+  <!-- Ambient cyber grid backdrop -->
+  <div class="cyber-grid-bg"></div>
+  <div class="radial-glow glow-cyan"></div>
+  <div class="radial-glow glow-lime"></div>
+
+  <div class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-badge">COMPUTER VISION ENGINE v3.5</div>
+        <h1 class="brand-title">
+          <span class="text-gradient-cyan">COUNT</span><span class="text-gradient-lime">IFY</span>
+        </h1>
+        <p class="brand-tagline">“Solving the world’s least important counting problems.”</p>
+      </div>
+
+      <div class="header-actions">
+        <!-- OpenCV / MediaPipe Ready Status -->
+        <div id="cv-status" class="status-pill status-loading" title="Computer Vision Engine Status">
+          <span class="status-dot"></span>
+          <span id="cv-status-text">INITIALIZING CV ENGINE...</span>
+        </div>
+
+
+        <!-- Voice Commentary Toggle -->
+        <button id="btn-toggle-voice" class="btn-icon active" title="Toggle Malayalam-English Voice Commentary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+          <span class="btn-label">VOICE: ON</span>
+        </button>
+
+        <!-- Proof Mode Toggle -->
+        <button id="btn-toggle-proof" class="btn-icon active" title="Toggle Proof Overlay (Contours, Numbers & Centroids)">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <polyline points="9 12 11 14 15 10"></polyline>
+          </svg>
+          <span class="btn-label">PROOF: ON</span>
+        </button>
+
+        <!-- Battle Mode Modal Trigger -->
+        <button id="btn-open-battle" class="btn-icon" title="Enter Counting Battle Mode">
+          ⚔️ BATTLE
+        </button>
+
+        <!-- Session Stats Trigger -->
+        <button id="btn-open-stats" class="btn-icon" title="View Career Stats">
+          📊 STATS
+        </button>
+
+        <!-- Standalone Test Bench -->
+        <a href="test-camera.html" target="_blank" class="btn-icon" title="Test Camera & Detectors in Isolation" style="text-decoration: none; color: var(--lime-400); border-color: rgba(163, 230, 53, 0.4);">
+          🧪 TEST BENCH
+        </a>
+      </div>
+    </header>
+
+    <!-- HERO CAMERA & UPLOAD INTAKE BAR (STEP 1) -->
+    <section class="hero-intake-section">
+      <div class="hero-intake-card">
+        <div class="hero-intake-header">
+          <div class="hero-step-badge">STEP 1: CAPTURE PHOTO OR UPLOAD</div>
+          <h2 class="hero-intake-title">Take a Photo or Upload Any Image</h2>
+          <p class="hero-intake-subtitle">Upload any image or take a photo to automatically detect and count every item with numbered proof.</p>
+        </div>
+
+        <div class="hero-actions-row">
+          <!-- Live Camera Trigger -->
+          <button id="hero-btn-camera" class="btn-hero-primary" title="Open webcam to take live picture">
+            <span class="btn-icon">🎥</span>
+            <span class="btn-text-block">
+              <strong>OPEN CAMERA</strong>
+              <small id="hero-cam-status-text">Click to start webcam</small>
+            </span>
+          </button>
+
+          <!-- Snap & Count Trigger -->
+          <button id="hero-btn-snap" class="btn-hero-snap" disabled title="Capture current camera frame and count items">
+            <span class="btn-icon">📸</span>
+            <span class="btn-text-block">
+              <strong>SNAP & COUNT</strong>
+              <small>Analyze live frame</small>
+            </span>
+          </button>
+
+          <!-- Upload Photo Trigger -->
+          <label class="btn-hero-secondary file-upload-btn" title="Upload an image from your device">
+            <span class="btn-icon">📁</span>
+            <span class="btn-text-block">
+              <strong>UPLOAD PHOTO</strong>
+              <small>JPG, PNG, WebP, Video</small>
+            </span>
+            <input type="file" id="file-input" accept="image/*,video/*" hidden>
+          </label>
+
+
+
+          <!-- Paste Hint -->
+          <div class="hero-paste-hint" title="Paste any copied picture using Ctrl+V">
+            <span class="key-badge">Ctrl + V</span>
+            <span>Paste Clipboard</span>
+          </div>
+        </div>
+
+        <!-- Quick Demo Test Samples -->
+        <div class="hero-sample-pills">
+          <span class="pills-label">⚡ QUICK TEST SAMPLES:</span>
+          <button class="sample-chip active" data-sample="rice" title="Test with 138 Basmati Rice Grains">🌾 Basmati Rice</button>
+          <button class="sample-chip" data-sample="leaves" title="Test with Foliage Plant Leaves">🌿 Plant Leaves</button>
+          <button class="sample-chip" data-sample="facial-hair" title="Test with Portrait & Beard Census">🧔 Face & Beard</button>
+          <button class="sample-chip" data-sample="drops" title="Test with Tap Water Droplet Tripwire">💧 Water Drops</button>
+          <button class="sample-chip" data-sample="custom" title="Test with Brass Coins / Clutter">🔘 Brass Coins</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE CLASSIFIER & OVERRIDE BANNER -->
+    <section class="ai-classification-bar" id="ai-classification-bar">
+      <div class="ai-bar-left">
+        <div class="ai-radar-pulse"></div>
+        <div class="ai-tag">OBJECT TYPE DETECTED</div>
+        <div class="ai-result-pill" id="ai-result-pill">
+          <span id="ai-detected-icon" class="ai-detected-icon">🌾</span>
+          <span id="ai-detected-label" class="ai-detected-label">Rice Grains</span>
+          <span id="ai-confidence-badge" class="ai-confidence-badge">98% Confidence</span>
+        </div>
+      </div>
+
+      <div class="ai-bar-center" id="ai-reason-text">
+        Detected 138 elliptical grain-like contours with aspect ratios between 1.35 and 5.0.
+      </div>
+
+      <div class="ai-bar-right">
+        <label for="ai-override-select" class="ai-override-label">Change Category:</label>
+        <select id="ai-override-select" class="ai-override-select" title="Override detected category if needed">
+          <option value="rice">🌾 Rice Grains</option>
+          <option value="leaves">🌿 Plant Leaves</option>
+          <option value="facial-hair">🧔 Face & Facial Hair</option>
+          <option value="drops">💧 Water Drops</option>
+          <option value="custom">🔘 Custom Objects</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Mode Navigation Cards -->
+    <nav class="mode-navigation">
+      <div class="mode-nav-heading">
+        <span>DETECTED COUNTING ENGINE CATEGORY:</span>
+      </div>
+      <div class="mode-cards-grid">
+        <button class="mode-card active" data-mode="rice">
+          <div class="mode-card-icon">🌾</div>
+          <div class="mode-card-info">
+            <h3 class="mode-card-title">RICE</h3>
+            <p class="mode-card-desc">Spread grains on dark surface</p>
+          </div>
+          <div class="mode-card-badge">CONTOUR ANALYSIS</div>
+        </button>
+
+        <button class="mode-card" data-mode="drops">
+          <div class="mode-card-icon">💧</div>
+          <div class="mode-card-info">
+            <h3 class="mode-card-title">WATER DROPS</h3>
+            <p class="mode-card-desc">Real-time tap tripwire tracker</p>
+          </div>
+          <div class="mode-card-badge">VIDEO TRIPWIRE</div>
+        </button>
+
+        <button class="mode-card" data-mode="leaves">
+          <div class="mode-card-icon">🌿</div>
+          <div class="mode-card-info">
+            <h3 class="mode-card-title">LEAVES</h3>
+            <p class="mode-card-desc">Plant inventory & foliage audit</p>
+          </div>
+          <div class="mode-card-badge">HSV + WATERSHED</div>
+        </button>
+
+        <button class="mode-card" data-mode="facial-hair">
+          <div class="mode-card-icon">🧔</div>
+          <div class="mode-card-info">
+            <h3 class="mode-card-title">FACIAL HAIR</h3>
+            <p class="mode-card-desc">Beard & moustache strand census</p>
+          </div>
+          <div class="mode-card-badge">MEDIAPIPE + RIDGES</div>
+        </button>
+
+        <button class="mode-card" data-mode="custom">
+          <div class="mode-card-icon">🔘</div>
+          <div class="mode-card-info">
+            <h3 class="mode-card-title">CUSTOM MODE</h3>
+            <p class="mode-card-desc">Click any object to count clones</p>
+          </div>
+          <div class="mode-card-badge">CLICK-TO-DETECT</div>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Workspace Layout -->
+    <main class="main-workspace">
+      <!-- Left Column: Camera / Canvas Dominant Viewport -->
+      <section class="viewport-section">
+        <div class="viewport-container" id="viewport-container">
+          <!-- Video element for live webcam -->
+          <video id="webcam-video" playsinline autoplay muted></video>
+
+          <!-- Primary processing & overlay canvas -->
+          <canvas id="main-canvas"></canvas>
+
+          <!-- Interactive selection layer for ROI / Click-to-count -->
+          <canvas id="interactive-canvas"></canvas>
+
+          <!-- Analyzing Radar Animation Overlay -->
+          <div id="ai-analyzing-overlay" class="ai-analyzing-overlay hidden">
+            <div class="ai-spinner-radar"></div>
+            <div class="ai-analyzing-text">
+              <strong id="overlay-status-title">ANALYZING IMAGE...</strong>
+              <p id="ai-analyzing-detail">Scanning objects, contours, and spatial distribution...</p>
+            </div>
+          </div>
+
+          <!-- Animated Scanline during processing -->
+          <div id="scanline" class="scanline hidden"></div>
+
+          <!-- Crosshair & Target Reticles -->
+          <div class="reticle-corner top-left"></div>
+          <div class="reticle-corner top-right"></div>
+          <div class="reticle-corner bottom-left"></div>
+          <div class="reticle-corner bottom-right"></div>
+
+          <!-- Water Drop Zone Indicator & Tripwire line overlay -->
+          <div id="drop-roi-box" class="drop-roi-box hidden">
+            <div class="roi-label">DROP DETECTION ZONE</div>
+            <div class="tripwire-line" id="tripwire-line">
+              <span class="tripwire-label">COUNT LINE</span>
+            </div>
+          </div>
+
+          <!-- Real-time HUD Quality Pill (Top Left) -->
+          <div class="viewport-hud-top">
+            <div class="quality-metric-pill" id="quality-hud">
+              <span class="hud-label">LIGHTING:</span> <strong id="hud-brightness">--</strong> |
+              <span class="hud-label">CONTRAST:</span> <strong id="hud-contrast">--</strong> |
+              <span class="hud-label">SHARPNESS:</span> <strong id="hud-sharpness">--</strong>
+            </div>
+            <div class="mode-active-pill" id="hud-active-mode">MODE: RICE</div>
+          </div>
+
+          <!-- Bottom Floating Proof & Binary Mask Viewer Toggle -->
+          <div class="viewport-hud-bottom">
+            <div class="view-mode-tabs">
+              <button class="view-tab active" data-view="composite">COMPOSITE</button>
+              <button class="view-tab" data-view="mask">BINARY MASK</button>
+              <button class="view-tab" data-view="raw">RAW SOURCE</button>
+            </div>
+            <div class="fps-pill" id="hud-fps">30 FPS</div>
+          </div>
+
+          <!-- Initial Empty State Placeholder -->
+          <div id="viewport-empty-prompt" class="viewport-prompt">
+            <div class="prompt-icon">📷</div>
+            <h3>Ready to Analyze</h3>
+            <p>Upload any image or open webcam from above to count instantly.</p>
+          </div>
+
+          <!-- Image Quality Warning Banner -->
+          <div id="quality-warning-banner" class="quality-warning-banner hidden">
+            <span class="warning-icon">⚠️</span>
+            <div class="warning-text">
+              <strong id="warning-title">IMAGE QUALITY WARNING</strong>
+              <p id="warning-desc">Lighting or sharpness is too low for reliable detection.</p>
+            </div>
+          </div>
+
+          <!-- Drag & Drop Visual Overlay -->
+          <div id="drop-overlay" class="drop-overlay hidden">
+            <div class="drop-overlay-content">
+              <span class="drop-icon">📥</span>
+              <h3>DROP IMAGE OR VIDEO HERE</h3>
+              <p>Release to immediately load and analyze</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Tuning & Controls Toolbar -->
+        <div class="viewport-tuning-toolbar" id="tuning-toolbar">
+          <div class="tuning-group">
+            <span class="tuning-label">DATASET:</span>
+            <select id="preset-selector" class="tuning-dropdown" title="Choose a realistic dataset preset">
+              <!-- Populated dynamically per mode -->
+            </select>
+          </div>
+
+          <div class="tuning-group" id="live-sensitivity-group">
+            <label for="live-sensitivity" class="tuning-label">SENSITIVITY:</label>
+            <input type="range" id="live-sensitivity" min="10" max="95" value="65" step="1">
+            <span id="live-sensitivity-val" class="tuning-val">65%</span>
+          </div>
+
+          <!-- Drop mode simulation toggle -->
+          <button id="btn-simulate-drops" class="btn-tuning hidden" title="Simulate falling water droplets if tap is not nearby">
+            <span class="btn-icon">💧</span> SIMULATE TAP
+          </button>
+
+          <!-- Custom mode sensitivity slider -->
+          <div id="custom-sensitivity-container" class="sensitivity-slider-wrapper hidden">
+            <label for="custom-sensitivity">SIMILARITY:</label>
+            <input type="range" id="custom-sensitivity" min="10" max="95" value="65" step="1">
+            <span id="sensitivity-value">65%</span>
+          </div>
+
+          <div class="tuning-group">
+            <button id="btn-toggle-clumps" class="btn-tuning active" title="Decompose touching grains into individual items">
+              🧩 CLUMPS: SPLIT
+            </button>
+            <button id="btn-toggle-invert" class="btn-tuning" title="Invert background polarity (dark ceramic vs bright paper)">
+              🌓 INVERT: AUTO
+            </button>
+            <button id="btn-toggle-roi" class="btn-tuning" title="Toggle interactive Region-of-Interest (ROI) box">
+              📐 ROI: OFF
+            </button>
+            <button id="btn-download" class="btn-tuning action-highlight" title="Export Certified Proof Card" disabled>
+              <span class="btn-icon">💾</span> EXPORT PROOF
+            </button>
+          </div>
+
+          <div class="tuning-tip">
+            <span>💡 <strong>Paste (Ctrl+V)</strong> or <strong>Drag & Drop</strong> any photo to count</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Result Card, Technical Proof & Comedy Analytics -->
+      <aside class="sidebar-section">
+        <!-- Live Result Card -->
+        <div class="card result-card" id="result-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <span class="result-badge">CERTIFIED COUNT</span>
+              <h2 class="result-mode-title" id="result-mode-name">RICE ANALYSIS</h2>
+            </div>
+            <div class="result-timestamp" id="result-time">--:--:--</div>
+          </div>
+
+          <!-- Dominant Count Display -->
+          <div class="count-hero-display">
+            <div class="count-value-wrapper">
+              <span class="count-hero-number" id="final-count-number">0</span>
+              <span class="count-hero-unit" id="final-count-unit">GRAINS</span>
+            </div>
+            <div class="count-hero-sub" id="count-hero-subtitle">Awaiting frame capture...</div>
+          </div>
+
+          <!-- Technical Proof Breakdown Grid -->
+          <div class="tech-proof-grid">
+            <div class="proof-metric-card">
+              <span class="metric-label">RAW DETECTIONS</span>
+              <strong class="metric-value" id="stat-raw-detections">0</strong>
+            </div>
+            <div class="proof-metric-card">
+              <span class="metric-label">REJECTED NOISE</span>
+              <strong class="metric-value text-red" id="stat-rejected-noise">0</strong>
+            </div>
+            <div class="proof-metric-card">
+              <span class="metric-label">DETECTION QUALITY</span>
+              <strong class="metric-value text-cyan" id="stat-quality-pct">--%</strong>
+            </div>
+            <div class="proof-metric-card">
+              <span class="metric-label">LATENCY</span>
+              <strong class="metric-value" id="stat-proc-time">0 ms</strong>
+            </div>
+          </div>
+
+          <!-- Mode-Specific Specialized Widgets -->
+          <!-- Rice Weight Estimator -->
+          <div id="widget-rice-estimator" class="special-widget">
+            <div class="widget-header">
+              <span class="widget-icon">⚖️</span>
+              <h4>SAMPLE WEIGHT EXTRAPOLATION</h4>
+            </div>
+            <div class="weight-input-row">
+              <label for="rice-sample-weight">Sample weight:</label>
+              <div class="input-with-unit">
+                <input type="number" id="rice-sample-weight" value="10" min="1" max="1000" step="0.5">
+                <span class="unit">g</span>
+              </div>
+            </div>
+            <div class="extrapolation-results">
+              <div class="extrap-item">
+                <span class="extrap-label">GRAINS / GRAM:</span>
+                <strong id="rice-grains-per-gram">--</strong>
+              </div>
+              <div class="extrap-item">
+                <span class="extrap-label">ESTIMATED IN 1 KG:</span>
+                <strong id="rice-est-1kg" class="text-lime">≈ --</strong>
+              </div>
+            </div>
+            <small class="disclaimer-text">*Clearly an unnecessary estimation based on your sample count.</small>
+          </div>
+
+          <!-- Facial Hair Breakdown -->
+          <div id="widget-beard-breakdown" class="special-widget hidden">
+            <div class="widget-header">
+              <span class="widget-icon">🧔</span>
+              <h4>FACIAL HAIR CENSUS</h4>
+            </div>
+            <div class="beard-stats-grid">
+              <div class="beard-stat-box">
+                <span class="beard-label">MOUSTACHE</span>
+                <strong class="beard-val" id="beard-moustache-count">--</strong>
+              </div>
+              <div class="beard-stat-box">
+                <span class="beard-label">BEARD</span>
+                <strong class="beard-val" id="beard-main-count">--</strong>
+              </div>
+              <div class="beard-stat-box">
+                <span class="beard-label">LEFT SIDE</span>
+                <strong class="beard-val" id="beard-left-count">--</strong>
+              </div>
+              <div class="beard-stat-box">
+                <span class="beard-label">RIGHT SIDE</span>
+                <strong class="beard-val" id="beard-right-count">--</strong>
+              </div>
+            </div>
+            <div class="beard-imbalance-meter">
+              <div class="imbalance-label">
+                <span>ASYMMETRY IMBALANCE:</span>
+                <strong id="beard-imbalance-val">0 hairs</strong>
+              </div>
+              <div class="imbalance-bar-bg">
+                <div id="beard-imbalance-bar" class="imbalance-bar-fill"></div>
+              </div>
+            </div>
+            <small class="disclaimer-text">*Approximate visible facial-hair strand estimate from ridge enhancement.</small>
+          </div>
+
+          <!-- Leaf Champions Widget -->
+          <div id="widget-leaf-champions" class="special-widget hidden">
+            <div class="widget-header">
+              <span class="widget-icon">🌿</span>
+              <h4>LEAF AUDIT CHAMPIONS</h4>
+            </div>
+            <div class="leaf-champions-row">
+              <div class="champ-box">
+                <span class="champ-label">LARGEST LEAF</span>
+                <strong class="champ-id text-lime" id="leaf-largest-id">#--</strong>
+                <span class="champ-area" id="leaf-largest-area">-- px²</span>
+              </div>
+              <div class="champ-box">
+                <span class="champ-label">SMALLEST LEAF</span>
+                <strong class="champ-id text-amber" id="leaf-smallest-id">#--</strong>
+                <span class="champ-area" id="leaf-smallest-area">-- px²</span>
+              </div>
+            </div>
+            <div id="leaf-dense-notice" class="dense-foliage-notice hidden">
+              <span>⚠️ Dense foliage detected. Scaled visible leaf estimate applied.</span>
+            </div>
+          </div>
+
+          <!-- Water Drop Velocity Widget -->
+          <div id="widget-drop-velocity" class="special-widget hidden">
+            <div class="widget-header">
+              <span class="widget-icon">💧</span>
+              <h4>DROP FLOW DYNAMICS</h4>
+            </div>
+            <div class="drop-stats-row">
+              <div class="drop-stat">
+                <span class="drop-label">CURRENT RATE</span>
+                <strong id="drop-rate-val">0</strong>
+                <span class="drop-unit">drops/min</span>
+              </div>
+              <div class="drop-stat">
+                <span class="drop-label">AVG INTERVAL</span>
+                <strong id="drop-interval-val">0.0</strong>
+                <span class="drop-unit">seconds</span>
+              </div>
+            </div>
+            <div id="drop-milestone-alert" class="milestone-box hidden">
+              <span class="milestone-badge">ACHIEVEMENT UNLOCKED</span>
+              <p id="milestone-text">100 drops and nobody fixed the tap.</p>
+            </div>
+          </div>
+
+          <!-- Custom Count Prompt Widget -->
+          <div id="widget-custom-prompt" class="special-widget hidden">
+            <div class="widget-header">
+              <span class="widget-icon">🔘</span>
+              <h4>CUSTOM OBJECT MATCHING</h4>
+            </div>
+            <p id="custom-prompt-text" class="custom-prompt-msg">
+              👉 Click on any exemplar object in the image to detect similar items.
+            </p>
+          </div>
+
+          <!-- Precision Object Audit Card -->
+          <div id="widget-gemini-card" class="special-widget gemini-result-card hidden">
+            <div class="widget-header">
+              <span class="widget-icon">📊</span>
+              <h4>OBJECT AUDIT BREAKDOWN</h4>
+              <span class="gemini-live-pill">VERIFIED</span>
+            </div>
+            <div class="gemini-explanation-text" id="gemini-explanation-text">
+              Analyzing the image...
+            </div>
+          </div>
+
+          <!-- Real Detected Items Audit List (Authentic Proof Table) -->
+          <div class="audit-list-card" id="audit-list-card">
+            <div class="audit-list-header">
+              <div class="audit-title-wrap">
+                <span class="audit-icon">🔍</span>
+                <h4>REAL DETECTED OBJECTS AUDIT</h4>
+              </div>
+              <span class="audit-item-count" id="audit-total-badge">0 items</span>
+            </div>
+            <p class="audit-subtitle">Individual pixel-level detections verified on your actual image:</p>
+            <div class="audit-table-scroll">
+              <table class="audit-table">
+                <thead>
+                  <tr>
+                    <th>#ID</th>
+                    <th>ITEM</th>
+                    <th>CENTER (X, Y)</th>
+                    <th>AREA</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-table-rows">
+                  <tr>
+                    <td colspan="5" class="audit-empty-cell">Capture or upload an image to view detected items</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Sarcastic Uselessness Score (Comedy Metric) -->
+          <div class="uselessness-container">
+            <div class="uselessness-header">
+              <span class="uselessness-title">USELESSNESS INDEX</span>
+              <span class="uselessness-subtitle">(Scientifically Ridiculous)</span>
+            </div>
+            <div class="useless-bars-stack">
+              <div class="bar-group">
+                <div class="bar-meta">
+                  <span>USEFULNESS:</span>
+                  <span id="score-usefulness-num">18%</span>
+                </div>
+                <div class="score-bar-track">
+                  <div id="score-usefulness-fill" class="score-bar-fill usefulness-fill" style="width: 18%;"></div>
+                </div>
+              </div>
+
+              <div class="bar-group">
+                <div class="bar-meta">
+                  <span>USELESSNESS:</span>
+                  <span id="score-uselessness-num">82%</span>
+                </div>
+                <div class="score-bar-track">
+                  <div id="score-uselessness-fill" class="score-bar-fill uselessness-fill" style="width: 82%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Funny Reaction Verdict Banner -->
+          <div class="card-footer-reaction">
+            <div class="verdict-bubble">
+              <span class="verdict-emoji">🤖</span>
+              <div class="verdict-text-block">
+                <p class="verdict-title" id="funny-verdict-title">“Dinner has analytics now.”</p>
+                <p class="verdict-malayali" id="funny-verdict-voice">“Eda ithu vare count cheyyano?”</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Counting Battle Modal -->
+    <div id="battle-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge">DUAL SCAN SHOWDOWN</span>
+            <h2>⚔️ COUNTING BATTLE MODE</h2>
+          </div>
+          <button id="btn-close-battle" class="btn-close">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="battle-intro">Pit two samples against each other to crown the undisputed winner of unnecessary quantities.</p>
+
+          <div class="battle-arena-grid">
+            <!-- Challenger A -->
+            <div class="challenger-card" id="challenger-a-card">
+              <div class="challenger-tag">CHALLENGER A</div>
+              <h3 id="challenger-a-title">SAMPLE A</h3>
+              <div class="challenger-preview-box">
+                <canvas id="battle-canvas-a" width="240" height="180"></canvas>
+                <div id="battle-placeholder-a" class="battle-ph">No Scan Yet</div>
+              </div>
+              <div class="battle-count" id="battle-count-a">--</div>
+              <div class="battle-btn-group" style="display: flex; gap: 6px; width: 100%; margin-top: 4px;">
+                <button id="btn-battle-scan-a" class="btn-action-primary" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.72rem;">📸 CAPTURE VIEW</button>
+                <button id="btn-battle-sample-a" class="btn-toolbar" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.72rem;" title="Load Sample A">⚡ LOAD SAMPLE</button>
+              </div>
+            </div>
+
+            <!-- VS Badge -->
+            <div class="battle-vs-divider">
+              <div class="vs-circle">VS</div>
+              <div class="vs-light-beam"></div>
+            </div>
+
+            <!-- Challenger B -->
+            <div class="challenger-card" id="challenger-b-card">
+              <div class="challenger-tag">CHALLENGER B</div>
+              <h3 id="challenger-b-title">SAMPLE B</h3>
+              <div class="challenger-preview-box">
+                <canvas id="battle-canvas-b" width="240" height="180"></canvas>
+                <div id="battle-placeholder-b" class="battle-ph">No Scan Yet</div>
+              </div>
+              <div class="battle-count" id="battle-count-b">--</div>
+              <div class="battle-btn-group" style="display: flex; gap: 6px; width: 100%; margin-top: 4px;">
+                <button id="btn-battle-scan-b" class="btn-action-primary" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.72rem;">📸 CAPTURE VIEW</button>
+                <button id="btn-battle-sample-b" class="btn-toolbar" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.72rem;" title="Load Sample B">⚡ LOAD SAMPLE</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Battle Outcome Banner -->
+          <div id="battle-outcome-banner" class="battle-outcome-banner hidden">
+            <div class="outcome-trophy">🏆</div>
+            <div class="outcome-details">
+              <h3 id="battle-winner-title">WINNER: CHALLENGER A</h3>
+              <p id="battle-margin-text">Victory margin: +17 unnecessary grains.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="btn-reset-battle" class="btn-toolbar">RESET BATTLE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Career Stats Drawer Modal -->
+    <div id="stats-modal" class="modal-backdrop hidden">
+      <div class="modal-card modal-stats">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge">LOCAL STORAGE AUDIT</span>
+            <h2>📊 COUNTIFY CAREER STATS</h2>
+          </div>
+          <button id="btn-close-stats" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="career-stats-grid">
+            <div class="career-stat-box">
+              <span class="cstat-num" id="cstat-total-scans">0</span>
+              <span class="cstat-label">TOTAL SCANS EXECUTED</span>
+            </div>
+            <div class="career-stat-box">
+              <span class="cstat-num text-cyan" id="cstat-objects-counted">0</span>
+              <span class="cstat-label">OBJECTS UNNECESSARILY COUNTED</span>
+            </div>
+            <div class="career-stat-box">
+              <span class="cstat-num text-lime" id="cstat-most-abused">RICE</span>
+              <span class="cstat-label">MOST ABUSED MODE</span>
+            </div>
+            <div class="career-stat-box">
+              <span class="cstat-num text-amber" id="cstat-largest-count">0</span>
+              <span class="cstat-label">LARGEST SINGLE COUNT</span>
+            </div>
+            <div class="career-stat-box full-width">
+              <span class="cstat-num text-red">0</span>
+              <span class="cstat-label">USEFUL REAL-WORLD TASKS COMPLETED</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-clear-stats" class="btn-toolbar text-red">CLEAR STATS</button>
+          <button id="btn-close-stats-btn" class="btn-action-secondary">CLOSE</button>
+        </div>
+      </div>
+    </div>
+
+        <!-- Camera Permission & Unblock Diagnostic Modal -->
+    <div id="camera-modal" class="modal-backdrop hidden">
+      <div class="modal-card modal-camera">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge text-amber" id="cam-modal-badge">CAMERA TROUBLESHOOTER</span>
+            <h3 class="modal-title text-gradient-cyan" id="cam-modal-title">Camera Permission Blocked</h3>
+          </div>
+          <button id="btn-close-cam-modal" class="btn-close" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="cam-diag-banner" id="cam-diag-banner">
+            <div class="cam-diag-icon" id="cam-diag-icon">🔒</div>
+            <div class="cam-diag-text">
+              <strong id="cam-diag-headline">Your browser has blocked camera access for this site.</strong>
+              <p id="cam-diag-detail">Don't worry — this is easy to fix in 5 seconds without restarting!</p>
+            </div>
+          </div>
+
+          <div class="cam-steps-box" id="cam-steps-box">
+            <h4 class="steps-heading">HOW TO UNBLOCK IN 5 SECONDS:</h4>
+            <ol class="cam-fix-steps">
+              <li>
+                <span class="step-num">1</span>
+                <span class="step-desc">Look at the browser address bar at the top (where it says <code>http://localhost:8080</code>).</span>
+              </li>
+              <li>
+                <span class="step-num">2</span>
+                <span class="step-desc">Click the <strong>🔒 Lock / Tune Settings icon</strong> or the <strong>Camera icon with red ✕</strong> on the left of the URL.</span>
+              </li>
+              <li>
+                <span class="step-num">3</span>
+                <span class="step-desc">Find <strong>Camera</strong> and toggle it from <strong>"Block"</strong> to <strong>"Allow"</strong>.</span>
+              </li>
+              <li>
+                <span class="step-num">4</span>
+                <span class="step-desc">Click the button below to instantly reload with camera permissions!</span>
+              </li>
+            </ol>
+          </div>
+
+          <div class="cam-device-select-row hidden" id="cam-device-row">
+            <label for="cam-select-device">Select Video Device:</label>
+            <select id="cam-select-device" class="cam-device-dropdown"></select>
+          </div>
+        </div>
+        <div class="modal-footer" style="flex-wrap: wrap; gap: 8px;">
+          <a href="test-camera.html" target="_blank" class="btn-action-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">🧪 TEST CAMERA SEPARATELY</a>
+          <button id="btn-use-sample-instead" class="btn-action-secondary">USE TEST SAMPLE INSTEAD</button>
+          <button id="btn-cam-reload" class="btn-action-primary glow-cyan">RELOAD & START CAMERA</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vision Engine Key Configuration Modal -->
+    <div id="gemini-modal" class="modal-backdrop hidden">
+      <div class="modal-card gemini-modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge text-cyan">CLOUD ENGINE</span>
+            <h3 class="modal-title">✨ Vision Engine Setup</h3>
+          </div>
+          <button id="btn-close-gemini-modal" class="btn-close" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="gemini-modal-intro">
+            Connect <strong>High-Precision Vision Engine</strong> to accurately identify, describe, and count anything in your uploaded photos with zero guessing!
+          </p>
+          
+          <div class="gemini-input-group">
+            <label for="gemini-api-key-input">Engine API Key:</label>
+            <div class="input-with-action">
+              <input type="password" id="gemini-api-key-input" placeholder="API Key..." autocomplete="off">
+              <button id="btn-toggle-key-visibility" class="btn-icon" title="Show/Hide Key">👁️</button>
+            </div>
+            <small class="gemini-help-text">
+              🔑 API key is active.
+            </small>
+          </div>
+
+          <div class="gemini-features-box">
+            <h4>🚀 Engine Capabilities:</h4>
+            <ul class="gemini-features-list">
+              <li>🔍 <strong>Universal Visual Recognition</strong>: Accurately counts rice, leaves, facial hair, coins, cars, pills, screws, people, etc.</li>
+              <li>🎯 <strong>2D Normalized Bounding Boxes</strong>: Real boundary coordinates plotted directly on your image.</li>
+              <li>🧠 <strong>Natural Reasoning</strong>: Explains exactly why and what was counted.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-clear-gemini-key" class="btn-toolbar text-red">CLEAR KEY</button>
+          <button id="btn-save-gemini-key" class="btn-action-primary glow-cyan">💾 SAVE & ACTIVATE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Audio Speech Bubble -->
+    <div id="speech-bubble" class="floating-speech-bubble hidden">
+      <div class="speech-avatar">🔊</div>
+      <div class="speech-content" id="speech-bubble-text">“Eda 400 kazhinju… ithu vare count cheyyano?”</div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="detectors.js"></script>
+  <script src="gemini-api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
